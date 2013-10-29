@@ -26,15 +26,24 @@
 
 /**
  * Configuration parameters
+ *
+ *  itemsPerRun:  Maximum number of items to be processed per run.
+ *  unreadOnly:   Whether unread feeds only or additionally feeds already read should be processed. [Default: TRUE]
+ *  logFile:      Absolute or relative path. If empty or not sufficient rights, no log file will be created. [Default: './FullFever.log']
+ *
  */
 
 // MySQL
 $localConfiguration = array(
     'mysqlHost'     => 'localhost',
+    'mysqlPort'     => '3306',
     'mysqlUser'     => '',
     'mysqlPassword' => '',
     'mysqlFeverDb'  => '',
 
-    'itemsPerRun'   => 10,
+    'itemsPerRun'   => 100,
+    'unreadOnly'    => TRUE,
+    
+    'logFile'       => './FullFever.log'
 )
 ?>
