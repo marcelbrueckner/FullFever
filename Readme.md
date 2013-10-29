@@ -1,3 +1,5 @@
+# UNTESTED!!!
+
 # What does it do
 
 The script retrieves the fulltext from the articles page and modifies the "description" field of the fever database, where fever store the article data.
@@ -35,10 +37,10 @@ $feedConfiguration = array(
 | ---           | ---                                               | ---       |
 | xPath         | A XPath, defining the HTML section to retrieve    | Mandatory | 
 |keepAbstract   | Keep the abstract and add the fullText or replace the abstract completely | FALSE |
-|replace        |array with from and to value to replace strings within the fulltext. First value represents search, second the replace value. | NONE |
+|replace        |array with from and to value to replace regular expressions within the fulltext. First value represents search, second the replace value. | NONE |
 
 
 
 # Links
 
-* [Article on my blog](http://daniel.lienert.cc/blog/blog-post/2013/08/full-feeds-for-the-fever-rss-agregator/)
+* [Article on Daniel Lienert's blog](http://daniel.lienert.cc/blog/blog-post/2013/08/full-feeds-for-the-fever-rss-agregator/)
