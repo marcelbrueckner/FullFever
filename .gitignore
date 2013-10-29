@@ -2,3 +2,4 @@
 LocalConfiguration.php
 FullText.cache
 *.log
+.DS_Store
