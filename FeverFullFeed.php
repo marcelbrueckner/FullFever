@@ -31,6 +31,7 @@ class FeverFullFeed {
 
 	// MySQL
 	protected $mysqlHost = '';
+	protected $mysqlPort = '';
 	protected $mysqlUser = '';
 	protected $mysqlPassword = '';
 	protected $mysqlFeverDb = '';
@@ -48,6 +49,15 @@ class FeverFullFeed {
      */
     protected $itemsPerRun = 10;
 
+    /**
+     * @var bool
+     */
+    protected $unreadOnly = TRUE;
+    
+    /**
+     * @var string
+     */
+    protected $logFile;
 
     /**
      * Cache already retrieved fullTexts
@@ -69,10 +79,16 @@ class FeverFullFeed {
         if($this->useFullTextCache) $this->fullTextCache = FullTextCache::getInstance();
 
         $this->loadConfigs();
-		$this->openMySQLConnection();
-		$this->processArticles();
+    		$this->openMySQLConnection();
+    		$this->processArticles();
 
-        if($this->useFullTextCache) $this->fullTextCache->shutdown();
+        if($this->useFullTextCache) {
+          try {
+            $this->fullTextCache->shutdown();
+          } catch (Exception $e) {
+            $this->writeToLog($e, FALSE);
+          }
+        }
 	}
 
 
@@ -82,18 +98,38 @@ class FeverFullFeed {
         $localConfiguration = array();
         $feedConfiguration = array();
 
-        if(!file_exists(__DIR__ . '/LocalConfiguration.php')) Throw new Exception('The file LocalConfiguration.php has to be existent within the directory ' . __DIR__);
-        if(!file_exists(__DIR__ . '/FeedConfiguration.php')) Throw new Exception('The file FeedConfiguration.php has to be existent within the directory ' . __DIR__);
+        if(!file_exists(__DIR__ . '/LocalConfiguration.php')) $this->writeToLog('The file LocalConfiguration.php has to be existent within the directory ' . __DIR__ . '\n', FALSE);
+        if(!file_exists(__DIR__ . '/FeedConfiguration.php')) $this->writeToLog('The file FeedConfiguration.php has to be existent within the directory ' . __DIR__ . '\n', FALSE);
 
         include __DIR__ . '/LocalConfiguration.php';
         include __DIR__ . '/FeedConfiguration.php';
 
         $this->itemsPerRun = $localConfiguration['itemsPerRun'];
+        $this->unreadOnly  = $localConfiguration['unreadOnly'];
+        
+        // Set absolute file path
+        if (array_key_exists('logFile', $localConfiguration)) {
+          if (substr($localConfiguration['logFile'], 0, 1) === '.') {
+            $this->logFile = __DIR__ . substr($localConfiguration['logFile'], 1, strlen($localConfiguration['logFile']) - 1);
+          } else {
+            $this->logFile = $localConfiguration['logFile'];
+          }
+        }
+        // Check permissions
+        $file = @fopen(__DIR__ . 'dummy', 'a+b');
+        if($file == false) {
+          $this->logFile = '';
+        } else {
+          // Close file handle and delete file created with fopen()
+          @fclose($file);
+          @unlink(__DIR__ . 'dummy');
+        }
 
-        $this->mysqlHost = $localConfiguration['mysqlHost'];
-        $this->mysqlUser = $localConfiguration['mysqlUser'];
-        $this->mysqlPassword = $localConfiguration['mysqlPassword'];
-        $this->mysqlFeverDb = $localConfiguration['mysqlFeverDb'];
+        $this->mysqlHost      = $localConfiguration['mysqlHost'];
+        $this->mysqlUser      = $localConfiguration['mysqlUser'];
+        $this->mysqlPassword  = $localConfiguration['mysqlPassword'];
+        $this->mysqlFeverDb   = $localConfiguration['mysqlFeverDb'];
+        $this->mysqlPort      = $localConfiguration['mysqlPort'];
 
         $this->feedConfiguration = $feedConfiguration;
     }
@@ -101,50 +137,47 @@ class FeverFullFeed {
 
 
 	protected function openMySQLConnection() {
-        $this->mysqlConnection = new PDO('mysql:host='.$this->mysqlHost.';port=3306;dbname=' . $this->mysqlFeverDb, $this->mysqlUser, $this->mysqlPassword);
+        $this->mysqlConnection = new PDO('mysql:host='.$this->mysqlHost.';port='.$mysqlPort.';dbname=' . $this->mysqlFeverDb, $this->mysqlUser, $this->mysqlPassword);
 	}
 
 
 	protected function processArticles() {
-		$items = $this->getItemsToProcess();
-
-        $itemsInThisRun = 0;
-
-		foreach($items as $item) {
-
-            $url = $item['link'];
-            $feedConfig = $this->getConfigForURL($url);
-
-            if($feedConfig) {
-
-                if($this->useFullTextCache && $this->fullTextCache->itemExists($item['uid'])) {
-                    $item = $this->addFullTextToItem($item, $this->fullTextCache->get($item['uid']), $feedConfig->getKeepAbstract());
-                    $this->persistItem($item);
-                    echo "Set fullText for item " . $item['link'] . " from cache. \n";
-                } else {
-
-                    if($feedConfig->getXPath()) {
-                        $fullText = $this->getItemFulltextFromPage($url, $feedConfig->getXPath());
-
-                        if(trim($fullText)) {
-
-                            // Replace patterns in fulltext
-                            if(is_array($feedConfig->getReplace()) && count($feedConfig->getReplace()) == 2) {
-                                $replaceArray = $feedConfig->getReplace();
-                                $fullText = str_replace($replaceArray[0],$replaceArray[1], $fullText);
-                            }
-
-                            $item = $this->addFullTextToItem($item, $fullText, $feedConfig->getKeepAbstract());
-                            $this->persistItem($item);
-                            if($this->useFullTextCache) $this->fullTextCache->store($item['uid'], $fullText);
-                        }
-
-                        $itemsInThisRun++;
-                        if($itemsInThisRun >= $this->itemsPerRun) return;
-                    }
-                }
-            }
-        }
+  		$items = $this->getItemsToProcess();
+  
+  		foreach($items as $item) {
+  
+          $url = $item['link'];
+          $feedConfig = $this->getConfigForURL($url);
+  
+          if($feedConfig) {
+  
+              if($this->useFullTextCache && $this->fullTextCache->itemExists($item['uid'])) {
+                  $item = $this->addFullTextToItem($item, $this->fullTextCache->get($item['uid']), $feedConfig->getKeepAbstract());
+                  $this->persistItem($item);
+                  $this->writeToLog("Set fullText for item " . $item['link'] . " from cache. \n");
+              } else {
+  
+                  if($feedConfig->getXPath()) {
+                      $fullText = $this->getItemFulltextFromPage($url, $feedConfig->getXPath());
+  
+                      if(trim($fullText)) {
+  
+                          // Replace patterns in fulltext
+                          if(is_array($feedConfig->getReplace())) {
+                              $replaceArray = $feedConfig->getReplace();
+                              foreach ($replaceArray as $replace) {
+                                $fullText = preg_replace($replaceArray[0],$replaceArray[1], $fullText);
+                              }
+                          }
+  
+                          $item = $this->addFullTextToItem($item, $fullText, $feedConfig->getKeepAbstract());
+                          $this->persistItem($item);
+                          if($this->useFullTextCache) $this->fullTextCache->store($item['uid'], $fullText);
+                      }
+                  }
+              }
+          }
+      }
 	}
 
 
@@ -157,7 +190,7 @@ class FeverFullFeed {
     protected function addFullTextToItem(&$item, $fullText, $keepAbstract) {
 
         $abstract = $keepAbstract ? $item['description'] : '';
-        $newDescriptionPattern = '%s<!--FULLTEXT--><hr><br/><br/>%s';
+        $newDescriptionPattern = '%s<!--FULLTEXT--><hr><br/>%s';
 
         $item['description'] = sprintf($newDescriptionPattern, $abstract, $fullText);
         return $item;
@@ -173,12 +206,16 @@ class FeverFullFeed {
 
         foreach($this->feedConfiguration as $urlRegex => $config) {
             if(preg_match($urlRegex, $url)) {
-                return new feedConfig($urlRegex, $config);
+                try {
+                  return new feedConfig($urlRegex, $config);
+                } catch (Exception $e) {
+                  $this->writeToLog($e, FALSE);
+                }
             }
         }
 
         return NULL;
-	}
+    }
 
 
 
@@ -186,13 +223,14 @@ class FeverFullFeed {
      * @return array
      */
     protected function getItemsToProcess() {
-
-		$statement = "SELECT * FROM `fever_items`
-						WHERE `read_on_time` = 0
-						AND description NOT like '%<!--FULLTEXT-->%'";
+    		$statement = "SELECT * FROM `fever_items`
+    						      WHERE description NOT like '%<!--FULLTEXT-->%'" .
+                      (($this->unreadOnly == TRUE) ? "AND `read_on_time` = 0" : "") .
+                      "SORT BY created_on_time DESC" .
+                      "LIMIT " . $this->itemsPerRun;                      
 
         return $this->mysqlConnection->query($statement)->fetchAll();
-	}
+    }
 
 
 
@@ -205,25 +243,26 @@ class FeverFullFeed {
 
         if($xPathQuery) {
 
-            echo "Retrieve FullText for $url .. ";
+            $this->writeToLog("Retrieve FullText for $url .. ");
 
             $dom = new DOMDocument();
             $htmlSource = $this->loadHTMLData($url);
             $success = @$dom->loadHTML($htmlSource);
 
             if($success) {
+                $itemFullText = '';
                 $domXPath = new DOMXPath($dom);
-
-                $resultRows = $domXPath->query($xPathQuery);
-
-                $itemFullText = $this->getInnerHTML($resultRows->item(0));
-
-                echo sprintf("(Full Page %s Chars - Extracted %s Chars) DONE.  \n", strlen($htmlSource), strlen($itemFullText));
-
+                $result = $domXPath->query($xPathQuery);
+                
+                foreach ( $result as $node ) {
+                  $itemFullText .= $this->getInnerHTML($node);
+                }
+                
+                $this->writeToLog("(Full Page " . strlen($htmlSource) . " Chars - Extracted " . strlen($itemFullText) . " Chars) DONE.  \n");
                 return $itemFullText;
 
             } else {
-                echo "Error while parsing HTML Content for URL $url";
+                $this->writeToLog("Error while parsing HTML Content for URL $url");
             }
         }
 
@@ -235,21 +274,12 @@ class FeverFullFeed {
      * @param $node
      * @return string
      */
-    protected function getInnerHTML($node) {
-        $innerHTML= '';
-
-        if(!$node instanceof DOMNode) return NULL;
-        $children = $node->childNodes;
-
-        if(count($children)) {
-            foreach ($children as $child) {
-                $innerHTML .= $child->ownerDocument->saveXML( $child );
-            }
-        }
-
+    public function getInnerHTML($node) {
+        $dom = new DOMDocument();
+        $dom->appendChild($dom->importNode($node,true));
+        $innerHTML = $dom->saveHTML();
         return $innerHTML;
     }
-
 
 
     /**
@@ -274,6 +304,24 @@ class FeverFullFeed {
     protected function persistItem($item) {
         $query = $this->mysqlConnection->prepare('UPDATE `fever_items` SET `description` = :description WHERE `id` = :id');
         $query->execute(array('description' => $item['description'], 'id' => $item['id']));
+    }
+    
+    
+    
+    /**
+     * @param $message
+     * @param $proceed If set to false the script execution will be stopped
+     */
+    protected function writeToLog($message, $proceed = TRUE) {
+        if ($this->logFile !== '') {
+          $file = @fopen($this->logFile, 'a+b');
+          fwrite($file, $message . '\n');
+          @fclose($file);
+        }
+        
+        if (!$proceed) {
+          Throw new Exception($message);
+        }
     }
 
 }
