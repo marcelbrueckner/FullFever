@@ -27,9 +27,9 @@
  * Feed Configuration Array:
  *  Key:    A Regex that has to match against the articles URL
  *  Value:  Array with the following keys:
- *     xPath: A XPath, defining the HTML section to retrieve
- *     keepAbstract: Keep the abstract and add the fullText or replace the abstract completely [Default: FALSE]
- *     replace: array with from and to value to replace strings within the fulltext. First value represents search, second the replace value
+ *    xPath:          A XPath, defining the HTML section to retrieve
+ *    keepAbstract:   Keep the abstract and add the fullText or replace the abstract completely [Default: FALSE]
+ *    replace:        Array with from and to value to replace regular expressions within the fulltext. First value represents search, second the replace value
  */
 
 $feedConfiguration = array(
@@ -46,15 +46,29 @@ $feedConfiguration = array(
         'keepAbstract' => TRUE,
     ),
     '/www.heise.de/' => array(
-        'xPath' => '//*[@id="mitte_news"]',
+        'xPath' => '/html/body/div[2]/div/div[4]/div/div/article',
         'keepAbstract' => TRUE,
     ),
     '/www.aerzteblatt.de/' => array(
         'xPath' => '//*[@id="newsContent"]',
         'keepAbstract' => TRUE,
     ),
-     '/www.sajonara.de/' => array(
-         'xPath' => '//*[@id="rumpf"]/div/div[1]/article/div[2]',
-         'keepAbstract' => FALSE,
+    '/www.sajonara.de/' => array(
+        'xPath' => '//*[@id="rumpf"]/div/div[1]/article/div[2]',
+        'keepAbstract' => FALSE,
+    ),
+    // iphone-ticker.de
+    '/.*feedsportal\.com.*.*iphone.*ticker.*/' => array(
+        'xPath' => '//div[@id="article-content"]//p'
+        'keepAbstract' => TRUE,
+    ),
+    // ifun.de
+    '/.*feedsportal\.com.*.*ifun.*de.*/' => array(
+        'xPath' => '//div[@id="article-content"]//p'
+        'keepAbstract' => TRUE,
+    ),
+    '/www.golem.de/' => array(
+        'xPath' => '/html/body/div/div[2]/div/div/article',
+        'keepAbstract' => FALSE,
     ),
 );
